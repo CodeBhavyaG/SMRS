@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [stats, setStats]             = useState<DashboardStats | null>(null);
   const [salesData, setSalesData]     = useState<SalesData[]>([]);
   const [categoryData, setCategoryData] = useState<CategoryData[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
   const [recentOrders, setRecentOrders] = useState<OrderItem[]>([]);
   const [topProducts, setTopProducts] = useState<ProductItem[]>([]);
 
@@ -43,8 +45,35 @@ export default function Dashboard() {
     fetch(`${API}/api/dashboard/sales-trend`)
       .then(r => r.json()).then(setSalesData);
 
+    // Fetch category distribution data for the pie chart from Supabase backend
+    setCategoryLoading(true);
+    setCategoryError(null);
     fetch(`${API}/api/dashboard/category-distribution`)
-      .then(r => r.json()).then(setCategoryData);
+      .then((r) => {
+        if (!r.ok) throw new Error(`Category API error: ${r.status}`);
+        return r.json();
+      })
+      .then((data: CategoryData[]) => {
+        const normalized = (data || []).map((item) => ({
+          name: String(item.name || "Unknown"),
+          value: Number(item.value) || 0,
+        }));
+
+        // Force recalculation and ensure number type for Recharts
+        const total = normalized.reduce((sum, item) => sum + item.value, 0);
+        if (total <= 0) {
+          setCategoryError("Category data has no positive values.");
+          setCategoryData([]);
+        } else {
+          setCategoryData(normalized);
+        }
+
+        setCategoryLoading(false);
+      })
+      .catch((err) => {
+        setCategoryError(err?.message ?? "Failed to load category data");
+        setCategoryLoading(false);
+      });
 
     fetch(`${API}/api/dashboard/recent-orders`)
       .then(r => r.json()).then(setRecentOrders);
@@ -152,27 +181,55 @@ export default function Dashboard() {
         >
           <h3 className="text-sm font-semibold text-foreground mb-1">Sales by Category</h3>
           <p className="text-xs text-muted-foreground mb-4">Product distribution</p>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" paddingAngle={3}>
-                {categoryData.map((_, i) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+
+          {categoryLoading ? (
+            <p className="text-xs text-muted-foreground">Loading category distribution...</p>
+          ) : categoryError ? (
+            <p className="text-xs text-destructive">Error: {categoryError}</p>
+          ) : categoryData.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No category distribution data available.</p>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={75}
+                    paddingAngle={3}
+                  >
+                    {categoryData.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => `${value}%`}
+                    contentStyle={{
+                      fontSize: "12px",
+                      borderRadius: "8px",
+                      border: "none",
+                      boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 mt-2">
+                {categoryData.map((cat, i) => (
+                  <div key={cat.name} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
+                      {cat.name}
+                    </span>
+                    <span className="font-mono font-medium">{cat.value}%</span>
+                  </div>
                 ))}
-              </Pie>
-              <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px", border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-2">
-            {categoryData.map((cat, i) => (
-              <div key={cat.name} className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                  {cat.name}
-                </span>
-                <span className="font-mono font-medium">{cat.value}%</span>
               </div>
-            ))}
-          </div>
+            </>
+          )}
         </motion.div>
       </div>
 

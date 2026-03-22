@@ -62,7 +62,7 @@ router.get('/sales-trend', async (req, res) => {
 // GET /api/dashboard/category-distribution
 router.get('/category-distribution', async (req, res) => {
   try {
-    const result = await pool.query(
+    const primary = await pool.query(
       `SELECT p.category AS name,
               ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 0) AS value
        FROM order_items oi
@@ -70,7 +70,28 @@ router.get('/category-distribution', async (req, res) => {
        GROUP BY p.category
        ORDER BY value DESC`
     );
-    res.json(result.rows);
+
+    if (primary.rows.length > 0) {
+      return res.json(primary.rows);
+    }
+
+    // Fallback: category distribution from product catalog when order_items is empty
+    const fallback = await pool.query(
+      `SELECT category AS name,
+              ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 0) AS value
+       FROM products
+       GROUP BY category
+       ORDER BY value DESC`
+    );
+
+    if (fallback.rows.length > 0) {
+      console.warn('Category distribution: using product fallback data (no order_items present).');
+      return res.json(fallback.rows);
+    }
+
+    // Last-resort fallback (no product data either)
+    console.warn('Category distribution: no product data, returning empty array.');
+    return res.json([]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch category distribution' });
