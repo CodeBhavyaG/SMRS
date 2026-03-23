@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-
+ 
 // GET /api/recommendations  - all recs grouped by customer
 router.get('/', async (req, res) => {
   try {
@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch recommendations' });
   }
 });
-
+ 
 // GET /api/recommendations/stats
 router.get('/stats', async (req, res) => {
   try {
@@ -48,10 +48,13 @@ router.get('/stats', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch recommendation stats' });
   }
 });
-
+ 
 // GET /api/recommendations/bundles  - popular bundles
+// FIX: bundle_items may be empty (seed data has product_bundles but no bundle_items rows).
+// Return bundles with empty items array as graceful fallback instead of returning nothing.
 router.get('/bundles', async (req, res) => {
   try {
+    // Try full join first
     const result = await pool.query(
       `SELECT pb.name, pb.sales, pb.revenue,
               ARRAY_AGG(p.name ORDER BY p.name) AS items
@@ -61,13 +64,24 @@ router.get('/bundles', async (req, res) => {
        GROUP BY pb.id, pb.name, pb.sales, pb.revenue
        ORDER BY pb.sales DESC`
     );
-    res.json(result.rows);
+ 
+    if (result.rows.length > 0) {
+      return res.json(result.rows);
+    }
+ 
+    // FIX: Fallback — return bundles even if bundle_items table is empty
+    const fallback = await pool.query(
+      `SELECT name, sales, revenue, ARRAY[]::text[] AS items
+       FROM product_bundles
+       ORDER BY sales DESC`
+    );
+    return res.json(fallback.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch bundles' });
   }
 });
-
+ 
 // GET /api/recommendations/customer/:id  - recs for a specific customer
 router.get('/customer/:id', async (req, res) => {
   try {
@@ -87,5 +101,6 @@ router.get('/customer/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch recommendations' });
   }
 });
-
+ 
 module.exports = router;
+ 

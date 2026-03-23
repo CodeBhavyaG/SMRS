@@ -2,23 +2,35 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { body, validationResult } = require('express-validator');
-
+ 
 // GET /api/customers  - list customers
+// FIX: 'tier' param now supports both single value (?tier=Gold) and
+// multi-value (?tier=Platinum&tier=Gold&tier=Silver) as sent by Loyalty.tsx
 router.get('/', async (req, res) => {
   try {
     const { segment, tier, search } = req.query;
     let conditions = [];
     let values = [];
     let idx = 1;
-
+ 
     if (search) {
       conditions.push(`(name ILIKE $${idx} OR email ILIKE $${idx})`);
       values.push(`%${search}%`);
       idx++;
     }
-    if (segment) { conditions.push(`segment = $${idx++}`); values.push(segment); }
-    if (tier)    { conditions.push(`loyalty_tier = $${idx++}`); values.push(tier); }
-
+    if (segment) {
+      conditions.push(`segment = $${idx++}`);
+      values.push(segment);
+    }
+    if (tier) {
+      // Support both single string and array of values
+      const tiers = Array.isArray(tier) ? tier : [tier];
+      const placeholders = tiers.map((_, i) => `$${idx + i}`).join(', ');
+      conditions.push(`loyalty_tier IN (${placeholders})`);
+      values.push(...tiers);
+      idx += tiers.length;
+    }
+ 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const result = await pool.query(
       `SELECT id, name, email, loyalty_tier, points, total_spend, visits, segment, last_visit
@@ -31,7 +43,7 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch customers' });
   }
 });
-
+ 
 // GET /api/customers/stats
 router.get('/stats', async (req, res) => {
   try {
@@ -49,7 +61,7 @@ router.get('/stats', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch customer stats' });
   }
 });
-
+ 
 // GET /api/customers/segments
 router.get('/segments', async (req, res) => {
   try {
@@ -70,7 +82,7 @@ router.get('/segments', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch segments' });
   }
 });
-
+ 
 // GET /api/customers/retention
 router.get('/retention', async (req, res) => {
   try {
@@ -89,7 +101,7 @@ router.get('/retention', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch retention data' });
   }
 });
-
+ 
 // GET /api/customers/loyalty/offers
 router.get('/loyalty/offers', async (req, res) => {
   try {
@@ -106,7 +118,7 @@ router.get('/loyalty/offers', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch offers' });
   }
 });
-
+ 
 // POST /api/customers/loyalty/offers  - create offer
 router.post(
   '/loyalty/offers',
@@ -118,7 +130,7 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
+ 
     const { title, target_tier, expiry_date } = req.body;
     try {
       const result = await pool.query(
@@ -132,7 +144,7 @@ router.post(
     }
   }
 );
-
+ 
 // POST /api/customers/:id/points  - add/deduct loyalty points
 router.post(
   '/:id/points',
@@ -140,7 +152,7 @@ router.post(
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
+ 
     const { points } = req.body;
     try {
       const result = await pool.query(
@@ -155,5 +167,6 @@ router.post(
     }
   }
 );
-
+ 
 module.exports = router;
+ 

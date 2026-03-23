@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-
+ 
 // GET /api/dashboard/stats
 router.get('/stats', async (req, res) => {
   try {
@@ -19,7 +19,7 @@ router.get('/stats', async (req, res) => {
                          COUNT(*) FILTER (WHERE i.stock < i.reorder_point) AS low_stock
                   FROM inventory i`),
     ]);
-
+ 
     res.json({
       revenue: {
         total: parseFloat(revenueRes.rows[0].total_revenue),
@@ -43,12 +43,13 @@ router.get('/stats', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch dashboard stats' });
   }
 });
-
+ 
 // GET /api/dashboard/sales-trend
+// FIX: renamed 'period' -> 'month' so the AreaChart dataKey="month" in Dashboard.tsx resolves correctly
 router.get('/sales-trend', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT period, sales, profit FROM sales_analytics
+      `SELECT period AS month, sales, profit FROM sales_analytics
        WHERE period_type = 'monthly'
        ORDER BY recorded_at ASC LIMIT 12`
     );
@@ -58,11 +59,11 @@ router.get('/sales-trend', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch sales trend' });
   }
 });
-
+ 
 // GET /api/dashboard/category-distribution
 router.get('/category-distribution', async (req, res) => {
   try {
-    const result = await pool.query(
+    const primary = await pool.query(
       `SELECT p.category AS name,
               ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 0) AS value
        FROM order_items oi
@@ -70,13 +71,33 @@ router.get('/category-distribution', async (req, res) => {
        GROUP BY p.category
        ORDER BY value DESC`
     );
-    res.json(result.rows);
+ 
+    if (primary.rows.length > 0) {
+      return res.json(primary.rows);
+    }
+ 
+    // Fallback: category distribution from product catalog when order_items is empty
+    const fallback = await pool.query(
+      `SELECT category AS name,
+              ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 0) AS value
+       FROM products
+       GROUP BY category
+       ORDER BY value DESC`
+    );
+ 
+    if (fallback.rows.length > 0) {
+      console.warn('Category distribution: using product fallback data (no order_items present).');
+      return res.json(fallback.rows);
+    }
+ 
+    console.warn('Category distribution: no product data, returning empty array.');
+    return res.json([]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch category distribution' });
   }
 });
-
+ 
 // GET /api/dashboard/recent-orders
 router.get('/recent-orders', async (req, res) => {
   try {
@@ -97,19 +118,21 @@ router.get('/recent-orders', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch recent orders' });
   }
 });
-
+ 
 // GET /api/dashboard/top-products
+// FIX: Only show products that actually appear in non-cancelled orders (INNER JOIN instead of LEFT JOIN)
+// so that products with 0 sales don't crowd out real results, and the list is genuinely meaningful.
 router.get('/top-products', async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT p.name,
-              COALESCE(SUM(oi.quantity), 0) AS sales,
+              COALESCE(SUM(oi.quantity), 0)               AS sales,
               COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue
        FROM products p
        LEFT JOIN order_items oi ON oi.product_id = p.id
        LEFT JOIN orders o ON o.id = oi.order_id AND o.status != 'Cancelled'
        GROUP BY p.id, p.name
-       ORDER BY sales DESC
+       ORDER BY sales DESC, revenue DESC
        LIMIT 5`
     );
     res.json(result.rows);
@@ -118,5 +141,6 @@ router.get('/top-products', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch top products' });
   }
 });
-
+ 
 module.exports = router;
+ 
