@@ -90,48 +90,7 @@ router.get('/retention', async (req, res) => {
   }
 });
 
-// GET /api/customers/loyalty/offers
-router.get('/loyalty/offers', async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT id, title, target_tier, redemptions,
-              TO_CHAR(expiry_date, 'Mon DD') AS expiry,
-              is_active
-       FROM loyalty_offers
-       ORDER BY expiry_date ASC`
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch offers' });
-  }
-});
 
-// POST /api/customers/loyalty/offers  - create offer
-router.post(
-  '/loyalty/offers',
-  [
-    body('title').notEmpty().trim(),
-    body('target_tier').notEmpty(),
-    body('expiry_date').isISO8601(),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-
-    const { title, target_tier, expiry_date } = req.body;
-    try {
-      const result = await pool.query(
-        `INSERT INTO loyalty_offers (title, target_tier, expiry_date) VALUES ($1,$2,$3) RETURNING id`,
-        [title, target_tier, expiry_date]
-      );
-      res.status(201).json({ message: 'Offer created', offerId: result.rows[0].id });
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: 'Failed to create offer' });
-    }
-  }
-);
 
 // POST /api/customers/:id/points  - add/deduct loyalty points
 router.post(

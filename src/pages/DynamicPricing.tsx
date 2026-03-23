@@ -120,8 +120,8 @@ export default function DynamicPricing() {
               </tr>
             </thead>
             <tbody>
-              {pricingRules.map((rule) => (
-                <tr key={rule.product} className="table-row">
+              {pricingRules.map((rule, idx) => (
+                <tr key={`${rule.product}-${rule.base_price}-${rule.current_price}-${idx}`} className="table-row">
                   <td className="table-cell font-medium">{rule.product}</td>
                   <td className="table-cell font-mono">₹{Number(rule.base_price).toLocaleString("en-IN")}</td>
                   <td className="table-cell font-mono font-medium">₹{Number(rule.current_price).toLocaleString("en-IN")}</td>

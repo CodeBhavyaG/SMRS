@@ -5,9 +5,51 @@ const pool = require('../config/db');
 // GET /api/recommendations  - all recs grouped by customer
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT c.name AS customer,
-              -- last purchase
+    const schemaRes = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='recommendations'`
+    );
+    const cols = schemaRes.rows.map((r) => r.column_name);
+    const hasCustomerId = cols.includes('customer_id');
+    const confidenceCol = cols.includes('confidence_pct')
+      ? 'confidence_pct'
+      : cols.includes('confidence')
+      ? 'confidence'
+      : null;
+    const reasonCol = cols.includes('reason') ? 'reason' : null;
+    const productNameCol = cols.includes('product_name') ? 'product_name' : null;
+    const productIdCol = cols.includes('product_id') ? 'product_id' : null;
+
+    if (!hasCustomerId) {
+      const rows = await pool.query(
+        `SELECT
+           ${productIdCol ? 'product_id,' : ''}
+           ${productNameCol ? `${productNameCol} AS product_name,` : "'' AS product_name,"}
+           ${confidenceCol ? `${confidenceCol} AS confidence` : '0 AS confidence'}
+         FROM recommendations
+         ORDER BY ${confidenceCol || '0'} DESC LIMIT 100`
+      );
+
+      const output = [{
+        customer: 'Top Recommendations',
+        last_purchased: null,
+        recommended: rows.rows.map((r) => ({
+          name: r.product_name || (r.product_id ? String(r.product_id) : 'Unknown product'),
+          confidence: Number(r.confidence) || 0,
+          reason: reasonCol ? r[reasonCol] || 'Recommended' : 'Recommended',
+        })),
+      }];
+
+      return res.json(output);
+    }
+
+    const confidenceExpr = confidenceCol
+      ? `COALESCE(r.${confidenceCol}, 0)`
+      : '0';
+    const reasonExpr = reasonCol
+      ? `COALESCE(r.${reasonCol}, 'Recommended')`
+      : `'Recommended'`;
+
+    const query = `SELECT c.name AS customer,
               (SELECT p2.name FROM orders o2
                JOIN order_items oi2 ON oi2.order_id = o2.id
                JOIN products p2 ON p2.id = oi2.product_id
@@ -15,20 +57,21 @@ router.get('/', async (req, res) => {
                ORDER BY o2.created_at DESC LIMIT 1) AS last_purchased,
               JSON_AGG(
                 JSON_BUILD_OBJECT(
-                  'name',       p.name,
-                  'confidence', r.confidence_pct,
-                  'reason',     r.reason
-                ) ORDER BY r.confidence_pct DESC
+                  'name', p.name,
+                  'confidence', ${confidenceExpr},
+                  'reason', ${reasonExpr}
+                ) ORDER BY ${confidenceExpr} DESC
               ) AS recommended
        FROM recommendations r
        JOIN customers c ON c.id = r.customer_id
-       JOIN products  p ON p.id = r.product_id
+       JOIN products p ON p.id = r.product_id
        GROUP BY c.id, c.name
-       ORDER BY c.name`
-    );
+       ORDER BY c.name`;
+
+    const result = await pool.query(query);
     res.json(result.rows);
   } catch (err) {
-    console.error(err);
+    console.error('Recommendations query error:', err);
     res.status(500).json({ error: 'Failed to fetch recommendations' });
   }
 });
@@ -36,15 +79,35 @@ router.get('/', async (req, res) => {
 // GET /api/recommendations/stats
 router.get('/stats', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT
-         COUNT(DISTINCT customer_id) AS active_profiles,
-         ROUND(AVG(confidence_pct), 1) AS avg_confidence
-       FROM recommendations`
+    const schemaRes = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name='recommendations'`
     );
+    const cols = schemaRes.rows.map((r) => r.column_name);
+    const hasCustomerId = cols.includes('customer_id');
+    const confidenceCol = cols.includes('confidence_pct')
+      ? 'confidence_pct'
+      : cols.includes('confidence')
+      ? 'confidence'
+      : null;
+
+    const avgExpr = confidenceCol
+      ? `ROUND(AVG(COALESCE(${confidenceCol}, 0)), 1)`
+      : '0';
+
+    const query = hasCustomerId
+      ? `SELECT
+           COUNT(DISTINCT customer_id) AS active_profiles,
+           ${avgExpr} AS avg_confidence
+         FROM recommendations`
+      : `SELECT
+           COUNT(*) AS active_profiles,
+           ${avgExpr} AS avg_confidence
+         FROM recommendations`;
+
+    const result = await pool.query(query);
     res.json(result.rows[0]);
   } catch (err) {
-    console.error(err);
+    console.error('Recommendation stats query error:', err);
     res.status(500).json({ error: 'Failed to fetch recommendation stats' });
   }
 });

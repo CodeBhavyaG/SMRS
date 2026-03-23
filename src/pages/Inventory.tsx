@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Package, AlertTriangle,  Search, Plus, ArrowUpDown } from "lucide-react";
+import { Package, AlertTriangle,  Search, Plus } from "lucide-react";
 import StatCard from "@/components/dashboard/StatCard";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { getApiBaseUrl } from "@/lib/api";
+import { supabase } from "@/lib/supabase";
 
 
 type InventoryItem = {
   id: string;
+  productId: number;
+  sku: string;
   name: string;
   category: string;
   stock: number;
@@ -26,18 +28,87 @@ export default function Inventory() {
   const [demandForecast, setDemandForecast] = useState<DemandForecastItem[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
 
-  const API = getApiBaseUrl();
-
   useEffect(() => {
-  fetch(`${API}/api/inventory`)
-    .then(r => r.json()).then(setInventory);
+    const fetchInventory = async () => {
+      try {
+        const { data: inventoryRows, error: inventoryError } = await supabase
+          .from("inventory")
+          .select("id, product_id, stock, reorder_point, demand_level");
 
-  fetch(`${API}/api/inventory/demand-forecast`)
-    .then(r => r.json()).then(setDemandForecast);
+        if (inventoryError || !inventoryRows) {
+          console.error("Failed to fetch inventory", inventoryError);
+          return;
+        }
 
-  fetch(`${API}/api/inventory/stats`)
-    .then(r => r.json()).then(setStats);
-}, [API]);
+        const productIds = Array.from(new Set(inventoryRows.map((item) => item.product_id).filter(Boolean)));
+        let productsMap = new Map<number, {id: number; sku: string; name: string; category: string; base_price: number}>();
+
+        if (productIds.length) {
+          const { data: productsData, error: productsError } = await supabase
+            .from("products")
+            .select("id, sku, name, category, base_price")
+            .in("id", productIds);
+
+          if (productsError) {
+            console.error("Failed to fetch products", productsError);
+          } else if (productsData) {
+            productsMap = new Map(productsData.map((p) => [p.id, p]));
+          }
+        }
+
+        const transformedInventory: InventoryItem[] = inventoryRows.map((item) => {
+          const product = productsMap.get(item.product_id);
+          const stock = item.stock ?? 0;
+          const reorder = item.reorder_point ?? 0;
+
+          return {
+            id: item.id.toString(),
+            productId: item.product_id,
+            sku: product?.sku || `INV-${item.id}`,
+            name: product?.name || "Unknown product",
+            category: product?.category || "Unspecified",
+            stock,
+            price: product?.base_price ?? 0,
+            status:
+              stock <= 10 ? "Critical" : stock < reorder ? "Low Stock" : "In Stock",
+            demand: item.demand_level || "Medium",
+          };
+        });
+
+        setInventory(transformedInventory);
+
+        setStats({
+          total_products: transformedInventory.length,
+          low_stock: transformedInventory.filter((i) => i.status === "Low Stock").length,
+          critical_stock: transformedInventory.filter((i) => i.status === "Critical").length,
+        });
+
+        const { data: forecastData, error: forecastError } = await supabase
+          .from("demand_forecast")
+          .select("product_id, current_qty, predicted_qty");
+
+        if (forecastError) {
+          console.error("Failed to fetch demand forecast", forecastError);
+          setDemandForecast([]);
+        } else {
+          const forecastByProduct = new Map((forecastData ?? []).map((r) => [r.product_id, r]));
+          const demandForecastRows = transformedInventory.map((item) => {
+            const raw = forecastByProduct.get(item.productId);
+            return {
+              product: item.name,
+              current: raw?.current_qty ?? 0,
+              predicted: raw?.predicted_qty ?? 0,
+            };
+          });
+          setDemandForecast(demandForecastRows);
+        }
+      } catch (err) {
+        console.error("Inventory load failed", err);
+      }
+    };
+
+    fetchInventory();
+  }, []);
 
   const filtered = inventory.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) || item.id.toLowerCase().includes(search.toLowerCase());
@@ -110,7 +181,7 @@ export default function Inventory() {
             <tbody>
               {filtered.map((item) => (
                 <tr key={item.id} className="table-row">
-                  <td className="table-cell font-mono text-xs">{item.id}</td>
+                  <td className="table-cell font-mono text-xs">{item.sku}</td>
                   <td className="table-cell font-medium">{item.name}</td>
                   <td className="table-cell">{item.category}</td>
                   <td className="table-cell font-mono">{item.stock}</td>

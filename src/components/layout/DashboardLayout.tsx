@@ -23,7 +23,6 @@ const navItems = [
   { icon: Package, label: "Inventory", path: "/inventory" },
   { icon: DollarSign, label: "Dynamic Pricing", path: "/pricing" },
   { icon: ShoppingBag, label: "Recommendations", path: "/recommendations" },
-  { icon: Heart, label: "Loyalty", path: "/loyalty" },
   { icon: MessageCircle, label: "AI Chatbot", path: "/chatbot" },
 ];
 

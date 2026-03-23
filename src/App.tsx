@@ -9,7 +9,6 @@ import ConsumerAnalytics from "@/pages/ConsumerAnalytics";
 import Inventory from "@/pages/Inventory";
 import DynamicPricing from "@/pages/DynamicPricing";
 import Recommendations from "@/pages/Recommendations";
-import Loyalty from "@/pages/Loyalty";
 import Chatbot from "@/pages/Chatbot";
 import NotFound from "@/pages/NotFound";
 
@@ -31,7 +30,6 @@ const App = () => (
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/pricing" element={<DynamicPricing />} />
             <Route path="/recommendations" element={<Recommendations />} />
-            <Route path="/loyalty" element={<Loyalty />} />
             <Route path="/chatbot" element={<Chatbot />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -20,14 +20,40 @@ export default function Recommendations() {
   const API = getApiBaseUrl();
  
   useEffect(() => {
-    fetch(`${API}/api/recommendations`)
-      .then(r => r.json()).then(setRecommendations);
- 
-    fetch(`${API}/api/recommendations/bundles`)
-      .then(r => r.json()).then(setPopularBundles);
- 
-    fetch(`${API}/api/recommendations/stats`)
-      .then(r => r.json()).then(setStats);
+    const loadArray = async (url: string) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.error(`Fetch failed ${url}:`, res.status, res.statusText);
+          return [];
+        }
+        const json = await res.json();
+        return Array.isArray(json) ? json : [];
+      } catch (err) {
+        console.error(`Fetch error ${url}:`, err);
+        return [];
+      }
+    };
+
+    const loadObject = async (url: string) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.error(`Fetch failed ${url}:`, res.status, res.statusText);
+          return null;
+        }
+        return await res.json();
+      } catch (err) {
+        console.error(`Fetch error ${url}:`, err);
+        return null;
+      }
+    };
+
+    (async () => {
+      setRecommendations(await loadArray(`${API}/api/recommendations`));
+      setPopularBundles(await loadArray(`${API}/api/recommendations/bundles`));
+      setStats(await loadObject(`${API}/api/recommendations/stats`));
+    })();
   }, [API]);
  
   return (
@@ -45,9 +71,9 @@ export default function Recommendations() {
       </div>
  
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {recommendations.map((rec, i) => (
+        {(Array.isArray(recommendations) ? recommendations : []).map((rec, i) => (
           <motion.div
-            key={rec.customer}
+            key={`${rec.customer}-${i}`}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 + i * 0.05 }}
