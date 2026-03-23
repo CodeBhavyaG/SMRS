@@ -30,7 +30,6 @@ const segmentColorMap: Record<string, string> = {
  
 export default function ConsumerAnalytics() {
   const [purchasePatterns, setPurchasePatterns] = useState<PurchasePattern[]>([]);
-  const [seasonalTrends, setSeasonalTrends]     = useState<SeasonalTrend[]>([]);
   const [customerSegments, setCustomerSegments] = useState<CustomerSegment[]>([]);
   const [stats, setStats]                       = useState<ConsumerStats | null>(null);
  
@@ -39,9 +38,6 @@ export default function ConsumerAnalytics() {
   useEffect(() => {
     fetch(`${API}/api/analytics/weekly-patterns`)
       .then(r => r.json()).then(setPurchasePatterns);
- 
-    fetch(`${API}/api/analytics/seasonal-trends`)
-      .then(r => r.json()).then(setSeasonalTrends);
  
     fetch(`${API}/api/analytics/segments`)
       .then(r => r.json()).then(setCustomerSegments);
@@ -94,21 +90,7 @@ export default function ConsumerAnalytics() {
         </motion.div>
       </div>
  
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="glass-card p-5">
-        <h3 className="text-sm font-semibold text-foreground">Seasonal Category Trends</h3>
-        <p className="text-xs text-muted-foreground mt-0.5 mb-4">Category demand over time</p>
-        <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={seasonalTrends}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 32%, 91%)" />
-            <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(215, 16%, 47%)" />
-            <YAxis tick={{ fontSize: 12 }} stroke="hsl(215, 16%, 47%)" />
-            <Tooltip contentStyle={{ fontSize: "12px", borderRadius: "8px", border: "none", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }} />
-            <Line type="monotone" dataKey="electronics" stroke="hsl(221, 83%, 53%)" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="clothing" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={{ r: 3 }} />
-            <Line type="monotone" dataKey="groceries" stroke="hsl(38, 92%, 50%)" strokeWidth={2} dot={{ r: 3 }} />
-          </LineChart>
-        </ResponsiveContainer>
-      </motion.div>
+      
  
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="glass-card overflow-hidden">
         <div className="px-5 py-4">
