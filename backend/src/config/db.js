@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 const pool = new Pool(
+  
   process.env.DATABASE_URL
     ? {
         connectionString: process.env.DATABASE_URL,
@@ -17,12 +18,15 @@ const pool = new Pool(
       }
 );
 
+
 pool.on('connect', () => {
   console.log('✅ Connected to Supabase PostgreSQL');
 });
 
+
 pool.on('error', (err) => {
   console.error('❌ PostgreSQL pool error:', err.message);
 });
+
 
 module.exports = pool;
